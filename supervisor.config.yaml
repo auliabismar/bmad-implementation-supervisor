@@ -1,0 +1,12 @@
+# BMAD Implementation Supervisor Configuration
+# Full configuration documented in: _bmad-output/planning-artifacts/architecture.md
+
+project:
+  root: .
+  sprint_status: _bmad-output/implementation-artifacts/sprint-status.yaml
+  stories_dir: _bmad-output/implementation-artifacts
+
+# notification: (E4-1)
+# workflows: (E2-1 to E2-5)
+# health: (E3-3, E6-1)
+# supervisor: (E1-4)

@@ -1,0 +1,87 @@
+# Dependencies
+node_modules/
+
+# SQLite database (local state)
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+logs/
+*.log
+*.log.*
+
+# Build output
+dist/
+build/
+out/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*.swo
+*~
+.zip
+
+# BMAD output (regeneratable)
+_bmad-output/
+_bmad-cache/
+_bmad/
+brainstorming-report.md
+
+# Supervisor state (local only)
+*.checkpoint
+*.state
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Test coverage
+coverage/
+*.lcov
+*.profraw
+
+# Language-specific
+# Bun
+bun.lock
+.bun/
+
+# Node
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm/
+.yarn/
+
+# TypeScript
+*.tsbuildinfo
+
+# PM2
+ecosystem.config.js
+pm2.*.log
+
+# Opencode
+.opencode/
+
+#Agents
+.agent/
+.agents/

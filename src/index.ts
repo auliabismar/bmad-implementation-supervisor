@@ -1,0 +1,1 @@
+console.log('BMAD Supervisor v0.1.0 - Starting...');
