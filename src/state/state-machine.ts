@@ -10,9 +10,9 @@ import {
   updateEpicStatus,
   getEpic as getEpicFromSprint,
   getStoriesByEpic,
-} from './sprint-status';
+} from "./sprint-status";
 
-export type WorkflowType = 'create-story' | 'dev-story' | 'code-review';
+export type WorkflowType = "create-story" | "dev-story" | "code-review";
 
 export interface StoryContext {
   story: StoryInfo;
@@ -33,29 +33,33 @@ export class InvalidTransitionError extends Error {
   constructor(
     public currentState: StoryStatus,
     public attemptedState: StoryStatus,
-    public validStates: StoryStatus[]
+    public validStates: StoryStatus[],
   ) {
-    super(`Invalid transition: ${currentState} → ${attemptedState}. Valid: ${validStates.join(', ')}`);
-    this.name = 'InvalidTransitionError';
+    super(
+      `Invalid transition: ${currentState} → ${attemptedState}. Valid: ${validStates.join(", ")}`,
+    );
+    this.name = "InvalidTransitionError";
   }
 }
 
 const VALID_STORY_TRANSITIONS: Record<StoryStatus, StoryStatus[]> = {
-  'backlog': ['ready-for-dev'],
-  'ready-for-dev': ['in-progress'],
-  'in-progress': ['review'],
-  'review': ['done', 'in-progress'],
-  'done': [],
+  backlog: ["ready-for-dev"],
+  "ready-for-dev": ["in-progress"],
+  "in-progress": ["review"],
+  review: ["done", "in-progress"],
+  done: [],
 };
 
 const VALID_EPIC_TRANSITIONS: Record<EpicStatus, EpicStatus[]> = {
-  'backlog': ['in-progress'],
-  'in-progress': ['done'],
-  'done': [],
+  backlog: ["in-progress"],
+  "in-progress": ["done"],
+  done: [],
 };
 
 export class StoryStateMachine {
   private checkpointCallbacks: Array<(context: StoryContext) => void> = [];
+  private workflowStartedCallbacks: Array<(context: StoryContext) => void> = [];
+  private workflowEndedCallbacks: Array<(context: StoryContext) => void> = [];
 
   constructor() {}
 
@@ -69,7 +73,11 @@ export class StoryStateMachine {
     return VALID_STORY_TRANSITIONS[status] ?? [];
   }
 
-  transition(story: StoryInfo, newStatus: StoryStatus, context?: Partial<StoryContext>): TransitionResult {
+  transition(
+    story: StoryInfo,
+    newStatus: StoryStatus,
+    context?: Partial<StoryContext>,
+  ): TransitionResult {
     if (!this.canTransition(story.status, newStatus)) {
       const validStates = this.getValidTransitions(story.status);
       throw new InvalidTransitionError(story.status, newStatus, validStates);
@@ -85,20 +93,24 @@ export class StoryStateMachine {
     let epic: EpicInfo | undefined;
     let checkpointRequired = true;
 
-    if (newStatus !== 'backlog') {
+    if (newStatus !== "backlog") {
       const epicInfo = getEpicFromSprint(story.epicNum);
-      if (epicInfo && epicInfo.status === 'backlog') {
-        const updatedEpic = this.transitionEpic(story.epicNum, 'in-progress');
+      if (epicInfo && epicInfo.status === "backlog") {
+        const updatedEpic = this.transitionEpic(story.epicNum, "in-progress");
         epic = updatedEpic;
       } else if (epicInfo) {
         epic = epicInfo;
       }
     }
 
-    if (newStatus === 'done') {
+    if (newStatus === "done") {
       const epicInfo = getEpicFromSprint(story.epicNum);
-      if (epicInfo && epicInfo.status === 'in-progress' && this.checkEpicCompletion(story.epicNum)) {
-        const updatedEpic = this.transitionEpic(story.epicNum, 'done');
+      if (
+        epicInfo &&
+        epicInfo.status === "in-progress" &&
+        this.checkEpicCompletion(story.epicNum)
+      ) {
+        const updatedEpic = this.transitionEpic(story.epicNum, "done");
         epic = updatedEpic;
       } else if (epicInfo) {
         epic = epicInfo;
@@ -117,7 +129,9 @@ export class StoryStateMachine {
       try {
         callback(storyContext);
       } catch (callbackError) {
-        console.error(`Checkpoint callback failed: ${callbackError instanceof Error ? callbackError.message : String(callbackError)}`);
+        console.error(
+          `Checkpoint callback failed: ${callbackError instanceof Error ? callbackError.message : String(callbackError)}`,
+        );
       }
     }
 
@@ -139,7 +153,7 @@ export class StoryStateMachine {
 
     if (!VALID_EPIC_TRANSITIONS[epicInfo.status].includes(newStatus)) {
       throw new Error(
-        `Invalid epic transition: ${epicInfo.status} → ${newStatus}. Valid: ${VALID_EPIC_TRANSITIONS[epicInfo.status].join(', ')}`
+        `Invalid epic transition: ${epicInfo.status} → ${newStatus}. Valid: ${VALID_EPIC_TRANSITIONS[epicInfo.status].join(", ")}`,
       );
     }
 
@@ -156,21 +170,39 @@ export class StoryStateMachine {
     const stories = getStoriesByEpic(epicNum);
     if (stories.length === 0) return false;
 
-    return stories.every(s => s.status === 'done');
+    return stories.every((s) => s.status === "done");
   }
 
   onCheckpoint(callback: (context: StoryContext) => void): void {
     this.checkpointCallbacks.push(callback);
   }
 
+  onWorkflowStarted(callback: (context: StoryContext) => void): void {
+    this.workflowStartedCallbacks.push(callback);
+  }
+
+  onWorkflowEnded(callback: (context: StoryContext) => void): void {
+    this.workflowEndedCallbacks.push(callback);
+  }
+
   startWorkflow(story: StoryInfo, workflow: WorkflowType): StoryContext {
-    return {
+    const context = {
       story,
       currentWorkflow: workflow,
       attempt: 1,
       lastError: null,
       lastCheckpoint: new Date(),
     };
+    for (const cb of this.workflowStartedCallbacks) {
+      cb(context);
+    }
+    return context;
+  }
+
+  endWorkflow(context: StoryContext): void {
+    for (const cb of this.workflowEndedCallbacks) {
+      cb(context);
+    }
   }
 
   incrementAttempt(context: StoryContext): void {
