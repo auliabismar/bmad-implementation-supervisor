@@ -1,6 +1,6 @@
 export type HarnessType = 'codex' | 'opencode' | 'commandcode';
 
-export type AgentStatus = 'completed' | 'failed' | 'timeout' | 'needs_input';
+export type AgentStatus = 'completed' | 'failed' | 'timeout' | 'retryable' | 'needs_input';
 
 export interface AgentConfig {
   harness: HarnessType;
@@ -10,6 +10,7 @@ export interface AgentConfig {
   workdir: string;
   skill?: string;
   args?: string[];
+  env?: Record<string, string>;
 }
 
 export interface AgentResult {
@@ -19,6 +20,7 @@ export interface AgentResult {
   stderr: string;
   durationMs: number;
   artifacts: string[];
+  retryAfterMs?: number;
 }
 
 export interface AgentHarness {
