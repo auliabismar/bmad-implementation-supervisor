@@ -45,6 +45,10 @@ _bmad-cache/
 _bmad/
 brainstorming-report.md
 
+#Agents
+.agent/
+.agents/
+
 # Supervisor state (local only)
 *.checkpoint
 *.state
@@ -81,7 +85,3 @@ pm2.*.log
 
 # Opencode
 .opencode/
-
-#Agents
-.agent/
-.agents/
