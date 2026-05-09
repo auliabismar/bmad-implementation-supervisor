@@ -21,7 +21,7 @@ development_status:
   3-1-error-classification: done
   3-2-retry-logic: done
   3-3-stall-detector: done
-  3-4-circuit-breaker: ready-for-dev
+  3-4-circuit-breaker: done
   3-5-sqlite-checkpointing: ready-for-dev
   3-6-recovery-logic: ready-for-dev
   epic-3-retrospective: optional
