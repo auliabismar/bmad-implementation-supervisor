@@ -1,12 +1,51 @@
-# BMAD Implementation Supervisor Configuration
-# Full configuration documented in: _bmad-output/planning-artifacts/architecture.md
-
 project:
   root: .
-  sprint_status: _bmad-output/implementation-artifacts/sprint-status.yaml
+  sprint_status: _bmad-output/sprint-status.yaml
   stories_dir: _bmad-output/implementation-artifacts
 
-# notification: (E4-1)
-# workflows: (E2-1 to E2-5)
-# health: (E3-3, E6-1)
-# supervisor: (E1-4)
+notification:
+  channel: telegram
+  telegram:
+    bot_token: "${TELEGRAM_BOT_TOKEN:-placeholder_bot_token}"
+    chat_id: "${TELEGRAM_CHAT_ID:-placeholder_chat_id}"
+
+workflows:
+  create_story:
+    harness: codex
+    model: gpt-5.4
+    timeout_ms: 300000
+
+  dev_story:
+    harness: codex
+    model: o3
+    timeout_ms: 1800000
+
+  code_review:
+    harness: opencode
+    model: anthropic/claude-sonnet-4-6
+    timeout_ms: 600000
+
+model_pool:
+  create_story:
+    - { harness: codex, model: gpt-5.4 }
+    - { harness: opencode, model: openai/gpt-5.4 }
+    - { harness: commandcode, model: openai/o4-mini }
+
+  dev_story:
+    - { harness: codex, model: o3 }
+    - { harness: opencode, model: google/gemini-2.5-pro }
+    - { harness: commandcode, model: anthropic/claude-sonnet-4-6 }
+
+  code_review:
+    - { harness: codex, model: anthropic/claude-sonnet-4-6 }
+    - { harness: opencode, model: anthropic/claude-sonnet-4-6 }
+    - { harness: commandcode, model: openai/o4-mini }
+
+health:
+  stuck_timeout_ms: 600000
+  max_retries_per_story: 3
+  circuit_breaker_threshold: 3
+
+supervisor:
+  poll_interval_ms: 5000
+  concurrent_stories: 1
