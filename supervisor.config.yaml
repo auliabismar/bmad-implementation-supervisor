@@ -1,6 +1,6 @@
 project:
   root: .
-  sprint_status: _bmad-output/sprint-status.yaml
+  sprint_status: _bmad-output/implementation-artifacts/sprint-status.yaml
   stories_dir: _bmad-output/implementation-artifacts
 
 notification:
