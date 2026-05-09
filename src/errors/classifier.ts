@@ -5,7 +5,13 @@
  * - RETRYABLE: Can retry same model/harness (e.g., rate limit, timeout)
  * - RECOVERABLE: Switch to next model/harness (e.g., model not found)
  * - FATAL: Stop immediately, requires human intervention (e.g., auth failure)
+ * - HUMAN_INPUT: Agent requires human confirmation (e.g., question via stdout)
  */
+
+import type { AgentResult } from '../agents/harness/interface';
+import type { ErrorClassification, ErrorCategory, ErrorContext, WorkflowType } from './types';
+
+export type { ErrorCategory, ErrorAction, ErrorContext, ErrorClassification, ErrorActionResult, WorkflowType } from './types';
 
 export enum ErrorType {
   RETRYABLE = 'retryable',
@@ -13,160 +19,247 @@ export enum ErrorType {
   FATAL = 'fatal',
 }
 
-/**
- * Thrown when all fallback attempts (model pool entries) have been exhausted.
- */
 export class FallbackExhaustedError extends Error {
   public readonly attempts: number;
   public readonly lastError: Error;
 
   constructor(attempts: number, lastError: Error) {
-    super(`All ${attempts} fallback attempts exhausted. Last error: ${lastError.message}`);
+    const message = `All ${attempts} fallback attempts exhausted. Last error: ${lastError.message}`;
+    super(message);
     this.name = 'FallbackExhaustedError';
     this.attempts = attempts;
     this.lastError = lastError;
   }
 }
 
-/**
- * Classify an error (and optional stderr) into an ErrorType to guide fallback behavior.
- * 
- * Pattern matching is case-insensitive and examines both error message and stderr.
- * 
- * @param error - The error object from harness invocation
- * @param stderr - Optional stderr output for additional context
- * @returns ErrorType classification
- */
+const RETRYABLE_PATTERNS: RegExp[] = [
+  /timeout/i,
+  /timed out/i,
+  /rate limit/i,
+  /429/i,
+  /too many requests/i,
+  /network error/i,
+  /ECONNREFUSED/i,
+  /ETIMEDOUT/i,
+  /ENOTFOUND/i,
+  /quota exceeded/i,
+  /insufficient credits/i,
+];
+
+const RECOVERABLE_PATTERNS: RegExp[] = [
+  /parse error/i,
+  /invalid json/i,
+  /json error/i,
+  /missing artifact/i,
+  /incomplete output/i,
+  /context window/i,
+  /spawn.*eacces/i,
+  /spawn.*enoent/i,
+  /executable.*not found/i,
+  /failed to spawn/i,
+  /model not found/i,
+  /unknown model/i,
+  /unsupported model/i,
+  /cli not found/i,
+  /command not found/i,
+  /not found/i,
+];
+
+const FATAL_PATTERNS: RegExp[] = [
+  /disk full/i,
+  /no space left/i,
+  /ENOSPC/i,
+  /permission denied/i,
+  /EACCES/i,
+  /yaml parse error/i,
+  /invalid yaml/i,
+  /authentication failed/i,
+  /invalid api key/i,
+  /unauthorized/i,
+  /invalid token/i,
+  /access denied/i,
+];
+
+const HUMAN_INPUT_PATTERNS: RegExp[] = [
+  /please confirm/i,
+  /should i proceed/i,
+  /do you want me to/i,
+  /\?$/m,
+];
+
+function matchesAny(text: string, patterns: RegExp[]): boolean {
+  return patterns.some(p => p.test(text));
+}
+
+function getDefaultClassification(category: ErrorCategory, reason: string): ErrorClassification {
+  return {
+    category,
+    action: categoryToAction(category),
+    reason,
+    shouldRetry: category === 'RETRYABLE',
+    retryableWithBackoff: category === 'RETRYABLE',
+    fallbackPossible: category !== 'FATAL',
+  };
+}
+
+function categoryToAction(category: ErrorCategory): string {
+  switch (category) {
+    case 'RETRYABLE': return 'RETRY';
+    case 'RECOVERABLE': return 'SWITCH_MODEL';
+    case 'FATAL': return 'ESCALATE';
+    case 'HUMAN_INPUT': return 'WAIT_FOR_INPUT';
+  }
+  return 'ESCALATE';
+}
+
 export function classifyError(error: Error, stderr?: string): ErrorType {
-  const text = [error.message, stderr || ''].join(' ').toLowerCase();
+  if (!error) return ErrorType.FATAL;
+  const text = [error.message, stderr || ''].join(' ');
 
-  // RETRYABLE patterns - can retry same model after backoff
-  const retryablePatterns = [
-    /rate limit/,
-    /429/,
-    /too many requests/,
-    /quota exceeded/,
-    /insufficient credits/,
-    /timed out/,
-    /timeout/,
-  ];
+  if (matchesAny(text, FATAL_PATTERNS)) return ErrorType.FATAL;
+  if (matchesAny(text, RETRYABLE_PATTERNS)) return ErrorType.RETRYABLE;
+  if (matchesAny(text, HUMAN_INPUT_PATTERNS)) return ErrorType.FATAL;
+  if (matchesAny(text, RECOVERABLE_PATTERNS)) return ErrorType.RECOVERABLE;
 
-  for (const pattern of retryablePatterns) {
-    if (pattern.test(text)) {
-      return ErrorType.RETRYABLE;
-    }
-  }
-
-  // RECOVERABLE patterns - try a different model/harness
-  const recoverablePatterns = [
-    /model not found/,
-    /unknown model/,
-    /not found/,
-    /unsupported model/,
-    /cli not found/,
-    /command not found/,
-    /spawn.*eacces/,
-    /spawn.*enoent/,
-    /executable.*not found/,
-    /failed to spawn/,
-  ];
-
-  for (const pattern of recoverablePatterns) {
-    if (pattern.test(text)) {
-      return ErrorType.RECOVERABLE;
-    }
-  }
-
-  // FATAL patterns - stop immediately, needs human
-  const fatalPatterns = [
-    /authentication failed/,
-    /invalid api key/,
-    /unauthorized/,
-    /invalid token/,
-    /permission denied/,
-    /access denied/,
-  ];
-
-  for (const pattern of fatalPatterns) {
-    if (pattern.test(text)) {
-      return ErrorType.FATAL;
-    }
-  }
-
-  // Unknown errors default to FATAL for safety
   return ErrorType.FATAL;
 }
 
-/**
- * Determine whether an error type should trigger fallback to next model.
- * RETRYABLE and RECOVERABLE both trigger fallback chain progression.
- * 
- * @param errorType - Classified error type
- * @returns true if fallback should proceed
- */
 export function shouldFallback(errorType: ErrorType): boolean {
   return errorType === ErrorType.RETRYABLE || errorType === ErrorType.RECOVERABLE;
 }
 
-/**
- * Extract error classification from an AgentResult status.
- * Converts the harness-specific status into an ErrorType for fallback decisions.
- * 
- * @param status - AgentResult status ('completed', 'failed', 'timeout', 'retryable')
- * @param stderr - Optional stderr for finer-grained classification
- * @returns ErrorType
- */
 export function classifyFromStatus(status: string, stderr?: string): ErrorType {
-  if (status === 'completed') {
-    // Success case - this branch is dead code since caller checks 'completed' before calling,
-    // but returning FATAL as a sentinel ensures no fallback is triggered if ever called directly
-    return ErrorType.FATAL;
-  }
-  if (status === 'retryable' || status === 'timeout') {
-    return ErrorType.RETRYABLE;
-  }
+  if (!status || typeof status !== 'string') return ErrorType.FATAL;
+
+  if (status === 'completed') return ErrorType.FATAL;
+  if (status === 'retryable' || status === 'timeout') return ErrorType.RETRYABLE;
+  if (status === 'needs_input') return ErrorType.FATAL;
   if (status === 'failed') {
-    if (!stderr) {
-      // No stderr, unknown failure, treat as RECOVERABLE to allow fallback
-      return ErrorType.RECOVERABLE;
-    }
-
-    const lowerStderr = stderr.toLowerCase();
-
-    // RETRYABLE patterns
-    const retryablePatterns = [
-      /rate limit/,
-      /429/,
-      /too many requests/,
-      /quota exceeded/,
-      /insufficient credits/,
-      /timed out/,
-      /timeout/,
-    ];
-    for (const pattern of retryablePatterns) {
-      if (pattern.test(lowerStderr)) {
-        return ErrorType.RETRYABLE;
-      }
-    }
-
-    // FATAL patterns - stop immediately, needs human
-    const fatalPatterns = [
-      /authentication failed/,
-      /invalid api key/,
-      /unauthorized/,
-      /invalid token/,
-      /permission denied/,
-      /access denied/,
-    ];
-    for (const pattern of fatalPatterns) {
-      if (pattern.test(lowerStderr)) {
-        return ErrorType.FATAL;
-      }
-    }
-
-    // All other errors are RECOVERABLE - try another model/harness
+    const text = stderr || '';
+    if (matchesAny(text, HUMAN_INPUT_PATTERNS)) return ErrorType.FATAL;
+    if (matchesAny(text, FATAL_PATTERNS)) return ErrorType.FATAL;
+    if (matchesAny(text, RETRYABLE_PATTERNS)) return ErrorType.RETRYABLE;
+    if (matchesAny(text, RECOVERABLE_PATTERNS)) return ErrorType.RECOVERABLE;
     return ErrorType.RECOVERABLE;
   }
-  // 'needs_input' and other statuses default to FATAL
   return ErrorType.FATAL;
 }
+
+export class ErrorClassifier {
+  classify(error: Error | AgentResult, context: ErrorContext): ErrorClassification {
+    if (this.isAgentResult(error)) {
+      return this.classifyAgentResult(error, context);
+    }
+    return this.classifyErrorObj(error, context);
+  }
+
+  private isAgentResult(value: Error | AgentResult): value is AgentResult {
+    return 'status' in value && 'exitCode' in value;
+  }
+
+  private classifyAgentResult(result: AgentResult, context: ErrorContext): ErrorClassification {
+    const { stdout, stderr, exitCode } = result;
+    const combined = `${stdout} ${stderr}`;
+
+    if (matchesAny(combined, HUMAN_INPUT_PATTERNS)) {
+      return {
+        category: 'HUMAN_INPUT',
+        action: 'WAIT_FOR_INPUT',
+        reason: 'Agent requires human confirmation',
+        shouldRetry: false,
+        retryableWithBackoff: false,
+        fallbackPossible: true,
+      };
+    }
+
+    if (matchesAny(combined, FATAL_PATTERNS)) {
+      return {
+        category: 'FATAL',
+        action: 'ESCALATE',
+        reason: 'Fatal system error detected',
+        shouldRetry: false,
+        retryableWithBackoff: false,
+        fallbackPossible: false,
+      };
+    }
+
+    if (exitCode === 124 || exitCode === 137 || matchesAny(combined, RETRYABLE_PATTERNS)) {
+      return {
+        category: 'RETRYABLE',
+        action: 'RETRY',
+        reason: 'Transient error, safe to retry',
+        shouldRetry: true,
+        retryableWithBackoff: true,
+        fallbackPossible: true,
+      };
+    }
+
+    if (matchesAny(combined, RECOVERABLE_PATTERNS)) {
+      return {
+        category: 'RECOVERABLE',
+        action: 'SWITCH_MODEL',
+        reason: 'Recoverable error, try different model',
+        shouldRetry: false,
+        retryableWithBackoff: false,
+        fallbackPossible: true,
+      };
+    }
+
+    return {
+      category: 'RECOVERABLE',
+      action: 'SWITCH_MODEL',
+      reason: 'Unknown error, attempting recovery',
+      shouldRetry: false,
+      retryableWithBackoff: false,
+      fallbackPossible: true,
+    };
+  }
+
+  private classifyErrorObj(error: Error, context: ErrorContext): ErrorClassification {
+    const message = error?.message || '';
+
+    if (matchesAny(message, HUMAN_INPUT_PATTERNS)) {
+      return {
+        category: 'HUMAN_INPUT',
+        action: 'WAIT_FOR_INPUT',
+        reason: 'Agent requires human confirmation',
+        shouldRetry: false,
+        retryableWithBackoff: false,
+        fallbackPossible: true,
+      };
+    }
+
+    if (matchesAny(message, FATAL_PATTERNS)) {
+      return {
+        category: 'FATAL',
+        action: 'ESCALATE',
+        reason: `Fatal error: ${message}`,
+        shouldRetry: false,
+        retryableWithBackoff: false,
+        fallbackPossible: false,
+      };
+    }
+
+    if (matchesAny(message, RETRYABLE_PATTERNS)) {
+      return {
+        category: 'RETRYABLE',
+        action: 'RETRY',
+        reason: `Retryable error: ${message}`,
+        shouldRetry: true,
+        retryableWithBackoff: true,
+        fallbackPossible: true,
+      };
+    }
+
+    return {
+      category: 'RECOVERABLE',
+      action: 'SWITCH_MODEL',
+      reason: `Unknown error: ${message}`,
+      shouldRetry: false,
+      retryableWithBackoff: false,
+      fallbackPossible: true,
+    };
+  }
+}
+
+export const classifier = new ErrorClassifier();
