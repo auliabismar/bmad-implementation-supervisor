@@ -1,6 +1,8 @@
 import { Bot, Context } from 'grammy';
 import { Menu } from '@grammyjs/menu';
 import { EventEmitter } from 'events';
+import { getCommandHandler, type CommandContext, type SupervisorCommands, type StateMachineCommands } from './commands.js';
+import { createStatusKeyboard } from './keyboards.js';
 
 export interface Button {
   label: string;
@@ -12,15 +14,23 @@ export interface StoryInfo {
   title: string;
 }
 
+export interface TelegramNotifierConfig {
+  commandContext?: CommandContext;
+  authorizedChatIds?: string[];
+}
+
 export class TelegramNotifier extends EventEmitter {
   private bot: Bot;
   private chatId: string;
   private running = false;
+  private config: TelegramNotifierConfig;
+  private statusKeyboard?: Menu;
 
-  constructor(botToken: string, chatId: string) {
+  constructor(botToken: string, chatId: string, config: TelegramNotifierConfig = {}) {
     super();
     this.bot = new Bot(botToken);
     this.chatId = chatId;
+    this.config = config;
     
     this.bot.catch((err) => {
       console.error('Grammy error:', err);
@@ -29,18 +39,106 @@ export class TelegramNotifier extends EventEmitter {
     this.setupCommands();
   }
 
-  private setupCommands(): void {
-    const handleCmd = (cmd: string) => async (ctx: Context) => {
-      this.emit('command', cmd);
-      await ctx.reply(`Command /${cmd} received.`);
-    };
+  setCommandContext(context: CommandContext): void {
+    this.config.commandContext = context;
+    if (!this.statusKeyboard) {
+      this.statusKeyboard = createStatusKeyboard({
+        supervisor: context.supervisor,
+        getCurrentStoryKey: () => context.supervisor.getCurrentStory()?.key ?? null
+      });
+      this.bot.use(this.statusKeyboard);
+    }
+  }
 
-    this.bot.command('status', handleCmd('status'));
-    this.bot.command('pause', handleCmd('pause'));
-    this.bot.command('resume', handleCmd('resume'));
-    this.bot.command('retry', handleCmd('retry'));
-    this.bot.command('skip', handleCmd('skip'));
-    this.bot.command('abort', handleCmd('abort'));
+  private isAuthorized(ctx: Context): boolean {
+    if (!this.config.authorizedChatIds || this.config.authorizedChatIds.length === 0) {
+      console.warn('[TelegramNotifier] No authorizedChatIds configured. Defaulting to deny for security.');
+      return false;
+    }
+    const chatId = ctx.message?.chat.id.toString() ?? ctx.callbackQuery?.message?.chat.id.toString();
+    if (!chatId) {
+      console.warn('[TelegramNotifier] Unable to extract chat ID for authorization check');
+      return false;
+    }
+    const authorized = this.config.authorizedChatIds.includes(chatId);
+    if (!authorized) {
+      console.warn(`[TelegramNotifier] Unauthorized access attempt from chat ID: ${chatId}`);
+    }
+    return authorized;
+  }
+
+  private async handleCommand(ctx: Context, command: string, args: string[]): Promise<void> {
+    if (!this.isAuthorized(ctx)) {
+      await ctx.reply('❌ Unauthorized');
+      return;
+    }
+
+    const handler = getCommandHandler(command);
+    if (!handler) {
+      await ctx.reply(`Unknown command: /${command}\nUse /help for available commands.`);
+      return;
+    }
+
+    if (!this.config.commandContext) {
+      await ctx.reply('⚠️ Supervisor not initialized');
+      return;
+    }
+
+    try {
+      const result = await handler.execute(args, this.config.commandContext);
+      if (command === 'status' && this.statusKeyboard) {
+        await ctx.reply(result.message, { parse_mode: 'Markdown', reply_markup: this.statusKeyboard });
+      } else {
+        await ctx.reply(result.message, { parse_mode: 'Markdown' });
+      }
+      this.emit('command', command, args, result);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await ctx.reply(`❌ Error: ${errorMessage}`);
+      this.emit('command-error', command, error);
+    }
+  }
+
+  private setupCommands(): void {
+    this.bot.command('status', async (ctx) => {
+      const text = ctx.message?.text ?? '';
+      const args = text.split(' ').slice(1);
+      await this.handleCommand(ctx, 'status', args);
+    });
+
+    this.bot.command('pause', async (ctx) => {
+      await this.handleCommand(ctx, 'pause', []);
+    });
+
+    this.bot.command('resume', async (ctx) => {
+      await this.handleCommand(ctx, 'resume', []);
+    });
+
+    this.bot.command('retry', async (ctx) => {
+      const text = ctx.message?.text ?? '';
+      const args = text.split(' ').slice(1);
+      await this.handleCommand(ctx, 'retry', args);
+    });
+
+    this.bot.command('skip', async (ctx) => {
+      const text = ctx.message?.text ?? '';
+      const args = text.split(' ').slice(1);
+      await this.handleCommand(ctx, 'skip', args);
+    });
+
+    this.bot.command('abort', async (ctx) => {
+      await this.handleCommand(ctx, 'abort', []);
+    });
+
+    this.bot.command('help', async (ctx) => {
+      await this.handleCommand(ctx, 'help', []);
+    });
+
+    this.bot.command('input', async (ctx) => {
+      const text = ctx.message?.text ?? '';
+      const args = text.split(' ').slice(1);
+      await this.handleCommand(ctx, 'input', args);
+    });
   }
 
   async sendMessage(text: string): Promise<void> {
