@@ -29,6 +29,9 @@ export interface NotificationRecord {
   message: string;
   priority: number;
   sent: number;
+  status: 'pending' | 'sent' | 'failed' | 'dead_letter';
+  retries: number;
+  last_attempt: string | null;
   created_at: string;
 }
 
@@ -118,9 +121,22 @@ function createTables(database: Database): void {
       message TEXT NOT NULL,
       priority INTEGER DEFAULT 2,
       sent INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'pending',
+      retries INTEGER DEFAULT 0,
+      last_attempt DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
+  
+  // Apply schema migrations for existing tables if needed
+  try {
+    database.run('SELECT status FROM notifications LIMIT 1');
+  } catch (error) {
+    database.run('ALTER TABLE notifications ADD COLUMN status TEXT DEFAULT "pending"');
+    database.run('ALTER TABLE notifications ADD COLUMN retries INTEGER DEFAULT 0');
+    database.run('ALTER TABLE notifications ADD COLUMN last_attempt DATETIME');
+    database.run('UPDATE notifications SET status = "sent" WHERE sent = 1');
+  }
 
   database.run(`
     CREATE TABLE IF NOT EXISTS invocations (
@@ -406,7 +422,7 @@ export function getPendingNotifications(): NotificationRecord[] {
   }
 
   const result = db.exec(
-    'SELECT id, story_key, event_type, message, priority, sent, created_at FROM notifications WHERE sent = 0 ORDER BY priority ASC, id ASC'
+    'SELECT id, story_key, event_type, message, priority, sent, status, retries, last_attempt, created_at FROM notifications WHERE status = "pending" AND (last_attempt IS NULL OR last_attempt <= datetime("now")) ORDER BY priority ASC, id ASC LIMIT 10'
   );
 
   if (!result[0]) return [];
@@ -418,7 +434,10 @@ export function getPendingNotifications(): NotificationRecord[] {
     message: row[3] as string,
     priority: row[4] as number,
     sent: row[5] as number,
-    created_at: row[6] as string,
+    status: row[6] as 'pending' | 'sent' | 'failed' | 'dead_letter',
+    retries: row[7] as number,
+    last_attempt: row[8] as string | null,
+    created_at: row[9] as string,
   }));
 }
 
@@ -431,7 +450,51 @@ export function markNotificationSent(id: number): void {
     throw new Error('Invalid id: must be a positive integer');
   }
 
-  db.run('UPDATE notifications SET sent = 1 WHERE id = ?', [id]);
+  db.run('UPDATE notifications SET sent = 1, status = "sent" WHERE id = ?', [id]);
+  saveDatabase();
+}
+
+export function updateNotificationStatus(id: number, status: 'pending' | 'sent' | 'failed' | 'dead_letter'): void {
+  if (!db) throw new Error('Database not initialized.');
+  db.run('UPDATE notifications SET status = ? WHERE id = ?', [status, id]);
+  saveDatabase();
+}
+
+export function scheduleNotificationRetry(id: number, retries: number, executeAt: string): void {
+  if (!db) throw new Error('Database not initialized.');
+  db.run('UPDATE notifications SET retries = ?, last_attempt = ?, status = "pending" WHERE id = ?', [retries, executeAt, id]);
+  saveDatabase();
+}
+
+export function getPendingNotificationsCount(): number {
+  if (!db) throw new Error('Database not initialized.');
+  const result = db.exec('SELECT COUNT(*) as count FROM notifications WHERE status = "pending"');
+  return (result[0]?.values[0]?.[0] as number) || 0;
+}
+
+export function getDeadLetterCount(): number {
+  if (!db) throw new Error('Database not initialized.');
+  const result = db.exec('SELECT COUNT(*) as count FROM notifications WHERE status = "dead_letter"');
+  return (result[0]?.values[0]?.[0] as number) || 0;
+}
+
+export function dropLowestPriorityNotification(): void {
+  if (!db) throw new Error('Database not initialized.');
+  db.run(`
+    DELETE FROM notifications
+    WHERE id = (
+      SELECT id FROM notifications
+      WHERE status = 'pending'
+      ORDER BY priority DESC, created_at ASC
+      LIMIT 1
+    )
+  `);
+  saveDatabase();
+}
+
+export function clearDeadLetterNotifications(): void {
+  if (!db) throw new Error('Database not initialized.');
+  db.run('DELETE FROM notifications WHERE status = "dead_letter"');
   saveDatabase();
 }
 
@@ -454,12 +517,13 @@ export function queueNotification(
   const newId = result[0]?.values[0]?.[0] as number;
 
   const record = db.exec(
-    `SELECT id, story_key, event_type, message, priority, sent, created_at FROM notifications WHERE id = ${newId}`
+    'SELECT id, story_key, event_type, message, priority, sent, status, retries, last_attempt, created_at FROM notifications WHERE id = ?',
+    [newId]
   );
 
   saveDatabase();
 
-  if (record[0]) {
+  if (record[0] && record[0].values[0]) {
     const row = record[0].values[0];
     return {
       id: row[0] as number,
@@ -468,7 +532,10 @@ export function queueNotification(
       message: row[3] as string,
       priority: row[4] as number,
       sent: row[5] as number,
-      created_at: row[6] as string,
+      status: row[6] as 'pending' | 'sent' | 'failed' | 'dead_letter',
+      retries: row[7] as number,
+      last_attempt: row[8] as string | null,
+      created_at: row[9] as string,
     };
   }
 

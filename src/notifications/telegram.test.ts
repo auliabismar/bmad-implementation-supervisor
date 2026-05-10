@@ -2,16 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { TelegramNotifier, StoryInfo, Button } from './telegram.js';
 import { Context } from 'grammy';
 
-const { mockSendMessage, mockGetMe, mockStart, mockStop, mockUse, mockCatch } = vi.hoisted(() => {
-  return {
-    mockSendMessage: vi.fn().mockResolvedValue(true),
-    mockGetMe: vi.fn().mockResolvedValue({ id: 123, username: 'test_bot' }),
-    mockStart: vi.fn().mockResolvedValue(undefined),
-    mockStop: vi.fn().mockResolvedValue(undefined),
-    mockUse: vi.fn(),
-    mockCatch: vi.fn()
-  };
-});
+const mockSendMessage = vi.fn().mockResolvedValue(true);
+const mockGetMe = vi.fn().mockResolvedValue({ id: 123, username: 'test_bot' });
+const mockStart = vi.fn().mockResolvedValue(undefined);
+const mockStop = vi.fn().mockResolvedValue(undefined);
+const mockUse = vi.fn();
+const mockCatch = vi.fn();
 
 vi.mock('grammy', () => {
   const mockApi = {
