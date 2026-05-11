@@ -133,31 +133,22 @@ backlog → ready-for-dev → in-progress → review → done
 
 ```
 bmad-supervisor/
+├── docs/                     # Documentation (Diataxis)
+│   ├── tutorials/           # Learning-oriented guides
+│   ├── how-to/              # Task-oriented guides
+│   ├── reference/           # Technical specifications
+│   └── explanation/         # Conceptual understanding
 ├── src/
-│   ├── index.ts              # Entry point
+│   ├── index.ts             # Entry point
 │   ├── config.ts            # Config loading with Zod
 │   ├── supervisor.ts        # Main orchestrator
-│   ├── state/
-│   │   ├── store.ts         # SQLite operations
-│   │   └── checkpoint.ts    # Checkpoint management
-│   ├── workflows/
-│   │   ├── create-story.ts
-│   │   ├── dev-story.ts
-│   │   └── code-review.ts
-│   ├── agents/
-│   │   ├── invoker.ts       # Agent invocation
-│   │   └── harness/         # Codex, OpenCode, CommandCode
-│   ├── errors/
-│   │   ├── handler.ts
-│   │   └── classifier.ts
-│   ├── notifications/
-│   │   ├── telegram.ts
-│   │   └── queue.ts
-│   ├── git/
-│   │   ├── ops.ts
-│   │   └── branch.ts
-│   └── http/
-│       └── server.ts        # Health & metrics endpoints
+│   ├── state/               # State management
+│   ├── workflows/           # Workflow implementations
+│   ├── agents/              # Agent harnesses
+│   ├── errors/              # Error handling
+│   ├── notifications/       # Telegram notifications
+│   ├── git/                 # Git operations
+│   └── http/                # HTTP API
 ├── supervisor.config.yaml
 ├── package.json
 └── tsconfig.json
@@ -269,6 +260,27 @@ pm2 monit
 ```
 
 ## Documentation
+
+The complete documentation is organized using the [Diataxis framework](https://diataxis.fr/):
+
+| Type | Purpose | Location |
+|------|---------|----------|
+| **Tutorials** | Learning-oriented, step-by-step guides | `docs/tutorials/` |
+| **How-to Guides** | Task-oriented, problem-solution format | `docs/how-to/` |
+| **Reference** | Technical specifications and API docs | `docs/reference/` |
+| **Explanation** | Conceptual understanding and architecture | `docs/explanation/` |
+
+### Quick Start
+
+1. **[Installation](./docs/tutorials/installation.md)** - Get up and running in 5 minutes
+2. **[First Workflow](./docs/tutorials/first-workflow.md)** - Run your first story
+3. **[Configuration](./docs/how-to/configuration.md)** - Customize supervisor
+
+### Full Documentation Index
+
+- [Diataxis Index](./docs/diataxis-index.md) - Complete documentation navigation
+
+### Additional Resources
 
 - [PRD](./_bmad-output/planning-artifacts/prd.md)
 - [Architecture](./_bmad-output/planning-artifacts/architecture.md)
