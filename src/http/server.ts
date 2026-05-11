@@ -1,4 +1,8 @@
 import { generateHealthResponse, resetUptime } from './health';
+import { getMetrics, updateStoryMetrics } from './metrics';
+import { getStoryStatusCounts } from './health';
+
+const METRICS_CONTENT_TYPE = 'text/plain; version=0.0.4; charset=utf-8';
 
 export interface ServerConfig {
   port: number;
@@ -28,7 +32,7 @@ export function startServer(config?: Partial<ServerConfig>): ReturnType<typeof B
   server = Bun.serve({
     port,
     hostname,
-    fetch(req) {
+    fetch: async (req) => {
       const url = new URL(req.url);
 
       if (url.pathname === '/health' && req.method === 'GET') {
@@ -39,6 +43,21 @@ export function startServer(config?: Partial<ServerConfig>): ReturnType<typeof B
             'Content-Type': 'application/json',
           },
         });
+      }
+
+      if (url.pathname === '/metrics' && req.method === 'GET') {
+        try {
+          const storyCounts = getStoryStatusCounts() ?? { total: 0, inProgress: 0, done: 0, failed: 0, stalled: 0 };
+          updateStoryMetrics(storyCounts);
+          const metrics = await getMetrics();
+          return new Response(metrics, {
+            headers: {
+              'Content-Type': METRICS_CONTENT_TYPE,
+            },
+          });
+        } catch (err) {
+          return new Response('Metrics unavailable', { status: 500 });
+        }
       }
 
       return new Response('Not Found', { status: 404 });
