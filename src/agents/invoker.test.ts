@@ -40,6 +40,7 @@ const mockConfig: SupervisorConfig = {
     code_review: [],
   },
   health: {
+    port: 3000,
     stuck_timeout_ms: 300000,
     max_retries_per_story: 3,
     circuit_breaker_threshold: 5,

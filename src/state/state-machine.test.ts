@@ -349,8 +349,12 @@ development_status:
       expect(stateMachine.canTransition('backlog', 'ready-for-dev')).toBe(true);
       expect(stateMachine.canTransition('ready-for-dev', 'in-progress')).toBe(true);
       expect(stateMachine.canTransition('in-progress', 'review')).toBe(true);
+      expect(stateMachine.canTransition('in-progress', 'failed')).toBe(true);
+      expect(stateMachine.canTransition('in-progress', 'stalled')).toBe(true);
       expect(stateMachine.canTransition('review', 'done')).toBe(true);
       expect(stateMachine.canTransition('review', 'in-progress')).toBe(true);
+      expect(stateMachine.canTransition('failed', 'ready-for-dev')).toBe(true);
+      expect(stateMachine.canTransition('stalled', 'ready-for-dev')).toBe(true);
     });
 
     it('canTransition returns false for invalid transition', () => {
@@ -362,8 +366,10 @@ development_status:
     it('getValidTransitions returns correct states', () => {
       expect(stateMachine.getValidTransitions('backlog')).toEqual(['ready-for-dev']);
       expect(stateMachine.getValidTransitions('ready-for-dev')).toEqual(['in-progress']);
-      expect(stateMachine.getValidTransitions('in-progress')).toEqual(['review']);
-      expect(stateMachine.getValidTransitions('review')).toEqual(['done', 'in-progress']);
+      expect(stateMachine.getValidTransitions('in-progress')).toEqual(['review', 'failed', 'stalled']);
+      expect(stateMachine.getValidTransitions('review')).toEqual(['done', 'in-progress', 'failed']);
+      expect(stateMachine.getValidTransitions('failed')).toEqual(['ready-for-dev']);
+      expect(stateMachine.getValidTransitions('stalled')).toEqual(['ready-for-dev']);
       expect(stateMachine.getValidTransitions('done')).toEqual([]);
     });
   });

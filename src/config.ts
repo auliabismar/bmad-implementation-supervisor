@@ -44,6 +44,7 @@ const SupervisorConfigSchema = z.object({
     code_review: z.array(ModelPoolEntrySchema),
   }),
   health: z.object({
+    port: z.number().int().positive().default(3000),
     stuck_timeout_ms: z.number().positive(),
     max_retries_per_story: z.number().int().positive(),
     circuit_breaker_threshold: z.number().int().positive(),

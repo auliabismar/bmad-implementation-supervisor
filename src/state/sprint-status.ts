@@ -9,6 +9,8 @@ export const StoryStatusEnum = z.enum([
   'ready-for-dev',
   'in-progress',
   'review',
+  'failed',
+  'stalled',
   'done',
 ]);
 

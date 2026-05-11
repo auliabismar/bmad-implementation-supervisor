@@ -1,5 +1,5 @@
 import { getConfig } from './config';
-import { loadSprintStatus, getNextStory } from './state/sprint-status';
+import { startServerWithGracefulShutdown } from './http/server';
 
 function maskSecret(value: string): string {
   if (!value || value.length <= 8) return '****';
@@ -19,11 +19,13 @@ try {
   console.log(`  Telegram Bot: ${maskSecret(config.notification.telegram.bot_token)}`);
   console.log(`  Telegram Chat: ${maskSecret(config.notification.telegram.chat_id)}`);
   console.log(`  Workflows: ${Object.keys(config.workflows).join(', ')}`);
+  console.log(`  Health - Port: ${config.health.port}`);
   console.log(`  Health - Stuck Timeout: ${config.health.stuck_timeout_ms}ms`);
   console.log(`  Health - Max Retries: ${config.health.max_retries_per_story}`);
   console.log(`  Health - Circuit Breaker: ${config.health.circuit_breaker_threshold}`);
   console.log(`  Supervisor - Poll Interval: ${config.supervisor.poll_interval_ms}ms`);
   console.log(`  Supervisor - Concurrent Stories: ${config.supervisor.concurrent_stories}`);
+  startServerWithGracefulShutdown({ port: config.health.port });
   console.log('BMAD Supervisor initialized successfully.');
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);

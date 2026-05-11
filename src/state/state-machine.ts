@@ -45,8 +45,10 @@ export class InvalidTransitionError extends Error {
 const VALID_STORY_TRANSITIONS: Record<StoryStatus, StoryStatus[]> = {
   backlog: ["ready-for-dev"],
   "ready-for-dev": ["in-progress"],
-  "in-progress": ["review"],
-  review: ["done", "in-progress"],
+  "in-progress": ["review", "failed", "stalled"],
+  review: ["done", "in-progress", "failed"],
+  failed: ["ready-for-dev"],
+  stalled: ["ready-for-dev"],
   done: [],
 };
 

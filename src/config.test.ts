@@ -66,6 +66,7 @@ supervisor:
     expect(config.project.root).toBe('/test/project');
     expect(config.notification.channel).toBe('telegram');
     expect(config.workflows.create_story.model).toBe('gpt-5.4');
+    expect(config.health.port).toBe(3000);
     expect(config.health.circuit_breaker_threshold).toBe(3);
     expect(config.supervisor.concurrent_stories).toBe(1);
 

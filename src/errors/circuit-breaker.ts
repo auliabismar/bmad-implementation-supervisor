@@ -1,4 +1,4 @@
-import type { AgentHarness } from '../agents/harness/interface';
+import type { HarnessType } from '../agents/harness/interface';
 
 export enum CircuitBreakerState {
   CLOSED = 'CLOSED',
@@ -170,8 +170,6 @@ export class CircuitBreaker {
   }
 }
 
-type HarnessType = AgentHarness;
-
 const breakers: Map<HarnessType, CircuitBreaker> = new Map();
 
 export function createBreakerForHarness(
@@ -202,26 +200,26 @@ export function resetAllBreakers(): void {
 }
 
 export interface CircuitBreakerManager {
-  execute<T>(harness: AgentHarness, fn: () => Promise<T>): Promise<T>;
-  isOpen(harness: AgentHarness): boolean;
-  getStats(harness: AgentHarness): CircuitBreakerStats;
-  reset(harness?: AgentHarness): void;
+  execute<T>(harness: HarnessType, fn: () => Promise<T>): Promise<T>;
+  isOpen(harness: HarnessType): boolean;
+  getStats(harness: HarnessType): CircuitBreakerStats;
+  reset(harness?: HarnessType): void;
 }
 
 export const createCircuitBreakerManager = (
   options?: CircuitBreakerOptions
 ): CircuitBreakerManager => ({
-  async execute<T>(harness: AgentHarness, fn: () => Promise<T>): Promise<T> {
+  async execute<T>(harness: HarnessType, fn: () => Promise<T>): Promise<T> {
     const breaker = createBreakerForHarness(harness, options);
     return breaker.execute(fn);
   },
 
-  isOpen(harness: AgentHarness): boolean {
+  isOpen(harness: HarnessType): boolean {
     const breaker = getBreaker(harness);
     return breaker?.isOpen() ?? false;
   },
 
-  getStats(harness: AgentHarness): CircuitBreakerStats {
+  getStats(harness: HarnessType): CircuitBreakerStats {
     const breaker = getBreaker(harness);
     return breaker?.getStats() ?? {
       failures: 0,
@@ -232,7 +230,7 @@ export const createCircuitBreakerManager = (
     };
   },
 
-  reset(harness?: AgentHarness): void {
+  reset(harness?: HarnessType): void {
     if (harness) {
       getBreaker(harness)?.reset();
     } else {
